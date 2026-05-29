@@ -6,8 +6,14 @@ final String homeDir = System.getenv('HOME') ?: System.getProperty('user.home')
 final String androidSdk = System.getenv('ANDROID_HOME') ?: "${homeDir}/Android/Sdk"
 final String androidNdk = System.getenv('ANDROID_NDK_HOME') ?: "${androidSdk}/ndk/28.2.13676358"
 final String sdl2Prefix = System.getenv('CT2_ANDROID_SDL2_PREFIX') ?: "${homeDir}/Android/prefixes/SDL2-2.32.10-android-arm64"
-final boolean probe = (project.findProperty('ct2Probe') ?: 'true').toString().toBoolean()
+final String freetypePrefix = System.getenv('CT2_ANDROID_FREETYPE_PREFIX') ?: "${homeDir}/Android/prefixes/freetype-2.13.3-android-arm64"
+final boolean probe = (project.findProperty('ct2Probe') ?: 'false').toString().toBoolean()
+final boolean bundleDevRoms = (project.findProperty('ct2BundleDevRoms') ?: project.findProperty('ct2DevFull') ?: 'false').toString().toBoolean()
+final boolean runtimeApk = !probe
+final boolean nativeOptimized = (project.findProperty('ct2NativeOptimized') ?: (runtimeApk ? 'true' : 'false')).toString().toBoolean()
 final File generatedJniLibsDir = layout.buildDirectory.dir('generated/jniLibs').get().asFile
+final File generatedProgramAssetsDir = layout.buildDirectory.dir('generated/programAssets').get().asFile
+final File generatedDevRomAssetsDir = layout.buildDirectory.dir('generated/devRomAssets').get().asFile
 
 android {
     namespace 'io.github.chameleontwist2recomp'
@@ -18,7 +24,7 @@ android {
         minSdk 24
         targetSdk 36
         versionCode 1
-        versionName probe ? '0.1.0-android-sdl-probe' : '0.1.0-android-runtime'
+        versionName probe ? '0.1.0-android-sdl-probe' : (bundleDevRoms ? '0.1.0-android-dev-roms' : '0.1.0-android-runtime')
 
         externalNativeBuild {
             cmake {
@@ -26,9 +32,22 @@ android {
                 arguments \
                     "-DANDROID_PLATFORM=android-24", \
                     "-DSDL2_DIR=${sdl2Prefix}/lib/cmake/SDL2", \
-                    "-DCMAKE_PREFIX_PATH=${sdl2Prefix}", \
+                    "-DCMAKE_PREFIX_PATH=${sdl2Prefix};${freetypePrefix}", \
+                    "-DFREETYPE_LIBRARY=${freetypePrefix}/lib/libfreetype.a", \
+                    "-DFREETYPE_INCLUDE_DIRS=${freetypePrefix}/include/freetype2", \
+                    "-DZSTD_BUILD_PROGRAMS=OFF", \
+                    "-DZSTD_BUILD_TESTS=OFF", \
+                    "-DZSTD_BUILD_DICTBUILDER=OFF", \
+                    "-DPATCHES_C_COMPILER=/usr/bin/clang-19", \
+                    "-DPATCHES_LD=/usr/bin/ld.lld-19", \
                     "-DCT2_ANDROID_SHELL_ONLY=${probe ? 'ON' : 'OFF'}", \
-                    "-DCT2_ANDROID_SDL_LIFECYCLE_PROBE=${probe ? 'ON' : 'OFF'}"
+                    "-DCT2_ANDROID_SDL_LIFECYCLE_PROBE=${probe ? 'ON' : 'OFF'}", \
+                    "-DCT2_ANDROID_RUNTIME_APK=${runtimeApk ? 'ON' : 'OFF'}", \
+                    "-DCT2_ANDROID_DEV_FULL_APK=${bundleDevRoms ? 'ON' : 'OFF'}"
+                if (nativeOptimized) {
+                    cFlags '-O2', '-g', '-DNDEBUG'
+                    cppFlags '-O2', '-g', '-DNDEBUG'
+                }
             }
         }
     }
@@ -45,6 +64,9 @@ android {
     sourceSets {
         main {
             jniLibs.srcDirs = [generatedJniLibsDir]
+            if (runtimeApk) {
+                assets.srcDirs = bundleDevRoms ? [generatedProgramAssetsDir, generatedDevRomAssetsDir] : [generatedProgramAssetsDir]
+            }
         }
     }
 
@@ -60,6 +82,56 @@ tasks.register('copySdl2JniLib', Copy) {
     into(new File(generatedJniLibsDir, 'arm64-v8a'))
 }
 
+
+
+tasks.register('downloadGameControllerDb') {
+    onlyIf { runtimeApk }
+    outputs.file file('../../gamecontrollerdb.txt')
+    doLast {
+        def outFile = file('../../gamecontrollerdb.txt')
+        if (!outFile.exists()) {
+            outFile.text = new URL('https://raw.githubusercontent.com/gabomdq/SDL_GameControllerDB/b1e4090b3d4266e55feb0793efa35792e05faf66/gamecontrollerdb.txt').text
+        }
+    }
+}
+
+tasks.register('checkRuntimeGeneratedInputs') {
+    onlyIf { runtimeApk }
+    doLast {
+        def missing = [
+        '../../RecompiledFuncs',
+        '../../rsp/n_aspMain.cpp'
+        ].findAll { !file(it).exists() }
+        if (!missing.isEmpty()) {
+            throw new GradleException("Full runtime APK mode requires generated recompilation inputs. Missing: ${missing.join(', ')}. Generate them with N64Recomp/RSPRecomp using the JP ROM before building with -Pct2Probe=false.")
+        }
+    }
+}
+
+tasks.register('copyProgramAssets', Copy) {
+    dependsOn tasks.named('downloadGameControllerDb')
+    onlyIf { runtimeApk }
+    from('../../assets') { into 'program/assets' }
+    from('../../gamecontrollerdb.txt') { into 'program' }
+    into generatedProgramAssetsDir
+}
+
+tasks.register('copyDevRomAssets', Copy) {
+    onlyIf { runtimeApk && bundleDevRoms }
+    from("../../chameleontwist.jp.z64") { into 'program/dev-roms' }
+    into generatedDevRomAssetsDir
+}
+
 tasks.matching { it.name.startsWith('merge') && it.name.endsWith('JniLibFolders') }.configureEach {
     dependsOn tasks.named('copySdl2JniLib')
+}
+
+tasks.matching { it.name.startsWith('configureCMake') }.configureEach {
+    dependsOn tasks.named('checkRuntimeGeneratedInputs')
+}
+
+tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach {
+    dependsOn tasks.named('downloadGameControllerDb')
+    dependsOn tasks.named('copyProgramAssets')
+    dependsOn tasks.named('copyDevRomAssets')
 }

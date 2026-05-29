@@ -30,9 +30,13 @@ endif()
 if (CMAKE_SYSTEM_NAME MATCHES "Android")
     option(CT2_ANDROID_SHELL_ONLY "Build only a minimal Android native shell that does not require generated game sources." OFF)
     option(CT2_ANDROID_SDL_LIFECYCLE_PROBE "Build an SDLActivity-driven Android lifecycle probe instead of the full runtime." OFF)
+    option(CT2_ANDROID_RUNTIME_APK "Build the real Android runtime as SDLActivity libmain.so." ON)
+    option(CT2_ANDROID_DEV_FULL_APK "Enable dev-only behavior for local Android APKs with bundled ROM assets." OFF)
 else()
     option(CT2_ANDROID_SHELL_ONLY "Build only a minimal Android native shell that does not require generated game sources." OFF)
     option(CT2_ANDROID_SDL_LIFECYCLE_PROBE "Build an SDLActivity-driven Android lifecycle probe instead of the full runtime." OFF)
+    option(CT2_ANDROID_RUNTIME_APK "Build the real Android runtime as SDLActivity libmain.so." OFF)
+    option(CT2_ANDROID_DEV_FULL_APK "Enable dev-only behavior for local Android APKs with bundled ROM assets." OFF)
 endif()
 
 if (CT2_ANDROID_SHELL_ONLY)
@@ -161,14 +165,24 @@ file(DOWNLOAD ${GAMECONTROLLERDB_URL} ${CMAKE_SOURCE_DIR}/gamecontrollerdb.txt
 add_custom_target(DownloadGameControllerDB
     DEPENDS ${CMAKE_SOURCE_DIR}/gamecontrollerdb.txt)
 
-# Main executable
-add_executable(ChameleonTwistJPRecompiled)
-add_dependencies(ChameleonTwistJPRecompiled DownloadGameControllerDB)
+# Main executable / Android SDLActivity shared library.
+if (CMAKE_SYSTEM_NAME MATCHES "Android" AND CT2_ANDROID_RUNTIME_APK)
+    add_library(main SHARED)
+    set(CT_RECOMP_TARGET main)
+    target_compile_definitions(main PRIVATE CT2_ANDROID_RUNTIME_APK=1)
+    if (CT2_ANDROID_DEV_FULL_APK)
+        target_compile_definitions(main PRIVATE CT2_ANDROID_DEV_FULL_APK=1)
+    endif()
+else()
+    add_executable(ChameleonTwistJPRecompiled)
+    set(CT_RECOMP_TARGET ChameleonTwistJPRecompiled)
+endif()
+add_dependencies(${CT_RECOMP_TARGET} DownloadGameControllerDB)
 
 # Generate mm_shader_cache.c from the MM shader cache if it exists
 if (EXISTS ${CMAKE_SOURCE_DIR}/shadercache/mm_shader_cache.bin)
     set(HAS_MM_SHADER_CACHE TRUE)
-    target_compile_definitions(ChameleonTwistJPRecompiled PRIVATE HAS_MM_SHADER_CACHE)
+    target_compile_definitions(${CT_RECOMP_TARGET} PRIVATE HAS_MM_SHADER_CACHE)
     add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/mm_shader_cache.c ${CMAKE_CURRENT_BINARY_DIR}/mm_shader_cache.h
         COMMAND file_to_c ${CMAKE_SOURCE_DIR}/shadercache/mm_shader_cache.bin mm_shader_cache_bytes ${CMAKE_CURRENT_BINARY_DIR}/mm_shader_cache.c ${CMAKE_CURRENT_BINARY_DIR}/mm_shader_cache.h
         DEPENDS ${CMAKE_SOURCE_DIR}/shadercache/mm_shader_cache.bin
@@ -204,7 +218,7 @@ if (HAS_MM_SHADER_CACHE)
     list(APPEND SOURCES ${CMAKE_CURRENT_BINARY_DIR}/mm_shader_cache.c)
 endif()
 
-target_include_directories(ChameleonTwistJPRecompiled PRIVATE
+target_include_directories(${CT_RECOMP_TARGET} PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/lib/concurrentqueue
     ${CMAKE_SOURCE_DIR}/lib/GamepadMotionHelpers
@@ -224,13 +238,13 @@ target_include_directories(ChameleonTwistJPRecompiled PRIVATE
 )
 
 if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
-    target_compile_options(ChameleonTwistJPRecompiled PRIVATE
+    target_compile_options(${CT_RECOMP_TARGET} PRIVATE
         -march=nehalem
         -fno-strict-aliasing
         -fms-extensions
     )
 else()
-    target_compile_options(ChameleonTwistJPRecompiled PRIVATE
+    target_compile_options(${CT_RECOMP_TARGET} PRIVATE
         -fno-strict-aliasing
         -fms-extensions
     )
@@ -251,7 +265,7 @@ if (WIN32)
         URL https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VERSION}/SDL2-devel-${SDL2_VERSION}-VC.zip
     )
     FetchContent_MakeAvailable(sdl2)
-    target_include_directories(ChameleonTwistJPRecompiled PRIVATE
+    target_include_directories(${CT_RECOMP_TARGET} PRIVATE
         ${sdl2_SOURCE_DIR}/include
     )
     target_link_directories(ChameleonTwistJPRecompiled PRIVATE
@@ -275,7 +289,7 @@ if (WIN32)
             LINK_FLAGS_MINSIZEREL "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
     )
 
-    target_sources(ChameleonTwistJPRecompiled PRIVATE ${CMAKE_SOURCE_DIR}/icons/app.rc)
+    target_sources(${CT_RECOMP_TARGET} PRIVATE ${CMAKE_SOURCE_DIR}/icons/app.rc)
 endif()
 
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")
@@ -287,20 +301,20 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
         COMMAND file_to_c ${CMAKE_SOURCE_DIR}/icons/512.png icon_bytes ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h 
         DEPENDS ${CMAKE_SOURCE_DIR}/icons/512.png
     )
-    target_sources(ChameleonTwistJPRecompiled PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c)
+    target_sources(${CT_RECOMP_TARGET} PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c)
 
     message(STATUS "SDL2_FOUND = ${SDL2_FOUND}")
     message(STATUS "SDL2_INCLUDE_DIRS = ${SDL2_INCLUDE_DIRS}")
 
-    target_include_directories(ChameleonTwistJPRecompiled PRIVATE ${SDL2_INCLUDE_DIRS})
+    target_include_directories(${CT_RECOMP_TARGET} PRIVATE ${SDL2_INCLUDE_DIRS})
 
     message(STATUS "X11_FOUND = ${X11_FOUND}")
     message(STATUS "X11_Xrandr_FOUND = ${X11_Xrandr_FOUND}")
     message(STATUS "X11_INCLUDE_DIR = ${X11_INCLUDE_DIR}")
     message(STATUS "X11_LIBRARIES = ${X11_LIBRARIES}")
 
-    target_include_directories(ChameleonTwistJPRecompiled PRIVATE ${X11_INCLUDE_DIR} ${X11_Xrandr_INCLUDE_PATH})
-    target_link_libraries(ChameleonTwistJPRecompiled PRIVATE ${X11_LIBRARIES} ${X11_Xrandr_LIB})
+    target_include_directories(${CT_RECOMP_TARGET} PRIVATE ${X11_INCLUDE_DIR} ${X11_Xrandr_INCLUDE_PATH})
+    target_link_libraries(${CT_RECOMP_TARGET} PRIVATE ${X11_LIBRARIES} ${X11_Xrandr_LIB})
 
     find_package(Freetype REQUIRED)
 
@@ -309,19 +323,29 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     message(STATUS "FREETYPE_LIBRARIES = ${FREETYPE_LIBRARIES}")
 
     include_directories(${FREETYPE_LIBRARIES})
-    target_link_libraries(ChameleonTwistJPRecompiled PRIVATE ${FREETYPE_LIBRARIES})
+    target_link_libraries(${CT_RECOMP_TARGET} PRIVATE ${FREETYPE_LIBRARIES})
 
     set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
     set(THREADS_PREFER_PTHREAD_FLAG TRUE)
     find_package(Threads REQUIRED)
 
-    target_link_libraries(ChameleonTwistJPRecompiled PRIVATE "-latomic -static-libstdc++" ${CMAKE_DL_LIBS} Threads::Threads)
+    target_link_libraries(${CT_RECOMP_TARGET} PRIVATE "-latomic -static-libstdc++" ${CMAKE_DL_LIBS} Threads::Threads)
 endif()
 
-target_link_libraries(ChameleonTwistJPRecompiled PRIVATE
+if (CMAKE_SYSTEM_NAME MATCHES "Android")
+    find_package(SDL2 REQUIRED CONFIG)
+    find_package(Freetype REQUIRED)
+
+    add_compile_definitions("PLUME_SDL_VULKAN_ENABLED")
+    add_compile_definitions("RT64_SDL_WINDOW_VULKAN")
+
+    target_link_libraries(${CT_RECOMP_TARGET} PRIVATE SDL2::SDL2 Freetype::Freetype android log vulkan atomic)
+endif()
+
+target_link_libraries(${CT_RECOMP_TARGET} PRIVATE
     # PatchesLib
     RecompiledFuncs
-    SDL2
+    $<$<NOT:$<PLATFORM_ID:Android>>:SDL2>
     librecomp
     ultramodern
     rt64
@@ -350,7 +374,7 @@ else()
         # Apple's binary is universal, so it'll work on both x86_64 and arm64
         set (DXC "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/arm64/dxc-macos")
     else()
-        if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+        if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
             set (DXC "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/x64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc")
         else()
             set (DXC "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/arm64/dxc-linux")
@@ -358,9 +382,9 @@ else()
     endif()
 endif()
 
-build_vertex_shader(ChameleonTwistJPRecompiled "shaders/InterfaceVS.hlsl" "shaders/InterfaceVS.hlsl")
-build_pixel_shader(ChameleonTwistJPRecompiled "shaders/InterfacePS.hlsl" "shaders/InterfacePS.hlsl")
+build_vertex_shader(${CT_RECOMP_TARGET} "shaders/InterfaceVS.hlsl" "shaders/InterfaceVS.hlsl")
+build_pixel_shader(${CT_RECOMP_TARGET} "shaders/InterfacePS.hlsl" "shaders/InterfacePS.hlsl")
 
-target_sources(ChameleonTwistJPRecompiled PRIVATE ${SOURCES})
+target_sources(${CT_RECOMP_TARGET} PRIVATE ${SOURCES})
 
-set_property(TARGET ChameleonTwistJPRecompiled PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_property(TARGET ${CT_RECOMP_TARGET} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")

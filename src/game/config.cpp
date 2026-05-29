@@ -7,6 +7,9 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
+#if defined(__ANDROID__)
+#include "SDL2/SDL_filesystem.h"
+#endif
 
 #if defined(_WIN32)
 #include <Shlobj.h>
@@ -146,6 +149,15 @@ std::filesystem::path zelda64::get_app_folder_path() {
    }
 
    CoTaskMemFree(known_path);
+#elif defined(__ANDROID__)
+   if (getenv("APP_FOLDER_PATH") != nullptr) {
+       return std::filesystem::path{getenv("APP_FOLDER_PATH")};
+   }
+
+   const char* internal_storage_path = SDL_AndroidGetInternalStoragePath();
+   if (internal_storage_path != nullptr) {
+       return std::filesystem::path{internal_storage_path} / zelda64::program_id;
+   }
 #elif defined(__linux__)
    // check for APP_FOLDER_PATH env var used by AppImage
    if (getenv("APP_FOLDER_PATH") != nullptr) {

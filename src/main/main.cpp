@@ -7,6 +7,10 @@
 #include <numeric>
 #include <stdexcept>
 #include <cinttypes>
+#if defined(__ANDROID__)
+#include <android/log.h>
+#include <jni.h>
+#endif
 
 #include "nfd.h"
 
@@ -18,6 +22,9 @@
 #else
 #include "SDL2/SDL.h"
 #include "SDL2/SDL_syswm.h"
+#if defined(__ANDROID__)
+#include "SDL2/SDL_filesystem.h"
+#endif
 #endif
 
 #include "recomp_ui.h"
@@ -37,6 +44,19 @@
 
 #include "../../lib/rt64/src/contrib/stb/stb_image.h"
 
+#if defined(__ANDROID__)
+extern "C" JNIEXPORT void JNICALL
+Java_io_github_chameleontwist2recomp_ChameleonTwist2SDLActivity_nativeOnRomSelected(JNIEnv*, jclass, jstring) {
+    // Full Android document-picker integration is a follow-up. Keep the native symbol present
+    // so the SDLActivity runtime APK can load and the launcher can fail gracefully for now.
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_io_github_chameleontwist2recomp_ChameleonTwist2SDLActivity_nativeOnModsSelected(JNIEnv*, jclass, jobjectArray) {
+}
+#endif
+
+
 const std::string version_string = "1.2.0-dev";
 
 template<typename... Ts>
@@ -55,7 +75,7 @@ ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
-#if defined(__linux__)
+#if defined(__gnu_linux__)
     SDL_SetHint(SDL_HINT_VIDEODRIVER, "x11");
 #endif
 
@@ -119,8 +139,12 @@ bool SetImageAsIcon(const char* filename, SDL_Window* window)
 SDL_Window* window;
 
 ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::gfx_data_t) {
-    window = SDL_CreateWindow("Chameleon Twist 2: Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1600, 960, SDL_WINDOW_RESIZABLE);
-#if defined(__linux__)
+    uint32_t flags = SDL_WINDOW_RESIZABLE;
+#if defined(RT64_SDL_WINDOW_VULKAN)
+    flags |= SDL_WINDOW_VULKAN;
+#endif
+    window = SDL_CreateWindow("Chameleon Twist 2: Recompiled", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1600, 960, flags);
+#if defined(__gnu_linux__)
     SetImageAsIcon("icons/512.png", window);
     if (ultramodern::renderer::get_graphics_config().wm_option == ultramodern::renderer::WindowMode::Fullscreen) { // TODO: Remove once RT64 gets native fullscreen support on Linux
         SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
@@ -141,7 +165,7 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 #if defined(_WIN32)
     return ultramodern::renderer::WindowHandle{ wmInfo.info.win.window, GetCurrentThreadId() };
 #elif defined(__ANDROID__)
-    static_assert(false && "Unimplemented");
+    return ultramodern::renderer::WindowHandle{ window };
 #elif defined(__linux__)
     if (wmInfo.subsystem != SDL_SYSWM_X11) {
         exit_error("Unsupported SDL2 video driver \"%s\". Only X11 is supported on Linux.\n", SDL_GetCurrentVideoDriver());
