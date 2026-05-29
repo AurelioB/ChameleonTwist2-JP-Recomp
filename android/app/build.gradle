@@ -103,7 +103,7 @@ tasks.register('checkRuntimeGeneratedInputs') {
         '../../rsp/n_aspMain.cpp'
         ].findAll { !file(it).exists() }
         if (!missing.isEmpty()) {
-            throw new GradleException("Full runtime APK mode requires generated recompilation inputs. Missing: ${missing.join(', ')}. Generate them with N64Recomp/RSPRecomp using the JP ROM before building with -Pct2Probe=false.")
+            throw new GradleException("Full runtime APK mode requires generated recompilation inputs. Missing: ${missing.join(', ')}. Run tools/generate_recomp_inputs.sh from the repo root after placing the required local-only ROM/ELF inputs, then rebuild with -Pct2Probe=false.")
         }
     }
 }
