@@ -1,0 +1,65 @@
+plugins {
+    id 'com.android.application'
+}
+
+final String homeDir = System.getenv('HOME') ?: System.getProperty('user.home')
+final String androidSdk = System.getenv('ANDROID_HOME') ?: "${homeDir}/Android/Sdk"
+final String androidNdk = System.getenv('ANDROID_NDK_HOME') ?: "${androidSdk}/ndk/28.2.13676358"
+final String sdl2Prefix = System.getenv('CT2_ANDROID_SDL2_PREFIX') ?: "${homeDir}/Android/prefixes/SDL2-2.32.10-android-arm64"
+final boolean probe = (project.findProperty('ct2Probe') ?: 'true').toString().toBoolean()
+final File generatedJniLibsDir = layout.buildDirectory.dir('generated/jniLibs').get().asFile
+
+android {
+    namespace 'io.github.chameleontwist2recomp'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'io.github.chameleontwist2recomp'
+        minSdk 24
+        targetSdk 36
+        versionCode 1
+        versionName probe ? '0.1.0-android-sdl-probe' : '0.1.0-android-runtime'
+
+        externalNativeBuild {
+            cmake {
+                abiFilters 'arm64-v8a'
+                arguments \
+                    "-DANDROID_PLATFORM=android-24", \
+                    "-DSDL2_DIR=${sdl2Prefix}/lib/cmake/SDL2", \
+                    "-DCMAKE_PREFIX_PATH=${sdl2Prefix}", \
+                    "-DCT2_ANDROID_SHELL_ONLY=${probe ? 'ON' : 'OFF'}", \
+                    "-DCT2_ANDROID_SDL_LIFECYCLE_PROBE=${probe ? 'ON' : 'OFF'}"
+            }
+        }
+    }
+
+    ndkVersion '28.2.13676358'
+
+    externalNativeBuild {
+        cmake {
+            path file('../../CMakeLists.txt')
+            version '3.22.1'
+        }
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = [generatedJniLibsDir]
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+}
+
+tasks.register('copySdl2JniLib', Copy) {
+    from("${sdl2Prefix}/lib/libSDL2.so")
+    into(new File(generatedJniLibsDir, 'arm64-v8a'))
+}
+
+tasks.matching { it.name.startsWith('merge') && it.name.endsWith('JniLibFolders') }.configureEach {
+    dependsOn tasks.named('copySdl2JniLib')
+}

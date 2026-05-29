@@ -27,6 +27,32 @@ if (WIN32)
     set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/lib/")
 endif()
 
+if (CMAKE_SYSTEM_NAME MATCHES "Android")
+    option(CT2_ANDROID_SHELL_ONLY "Build only a minimal Android native shell that does not require generated game sources." OFF)
+    option(CT2_ANDROID_SDL_LIFECYCLE_PROBE "Build an SDLActivity-driven Android lifecycle probe instead of the full runtime." OFF)
+else()
+    option(CT2_ANDROID_SHELL_ONLY "Build only a minimal Android native shell that does not require generated game sources." OFF)
+    option(CT2_ANDROID_SDL_LIFECYCLE_PROBE "Build an SDLActivity-driven Android lifecycle probe instead of the full runtime." OFF)
+endif()
+
+if (CT2_ANDROID_SHELL_ONLY)
+    if (NOT CMAKE_SYSTEM_NAME MATCHES "Android")
+        message(FATAL_ERROR "CT2_ANDROID_SHELL_ONLY is only supported for Android builds.")
+    endif()
+
+    find_package(SDL2 REQUIRED CONFIG)
+
+    if (CT2_ANDROID_SDL_LIFECYCLE_PROBE)
+        add_library(main SHARED
+            ${CMAKE_SOURCE_DIR}/src/android/sdl_lifecycle_probe.cpp
+        )
+        target_link_libraries(main PRIVATE SDL2::SDL2 android log)
+        return()
+    endif()
+
+    message(FATAL_ERROR "CT2_ANDROID_SHELL_ONLY requires CT2_ANDROID_SDL_LIFECYCLE_PROBE for now.")
+endif()
+
 set(RT64_STATIC TRUE)
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
 

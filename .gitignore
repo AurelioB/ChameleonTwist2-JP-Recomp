@@ -65,3 +65,18 @@ gamecontrollerdb.txt
 
 # Temp files
 src/main/*TMP
+# Android/Gradle build outputs
+android/.gradle/
+android/build/
+android/app/build/
+android/app/.cxx/
+
+# Native/CMake generated files
+build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+
+# Python/cache noise
+__pycache__/
+*.pyc
