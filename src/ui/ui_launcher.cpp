@@ -77,7 +77,7 @@ public:
 		);
 		recompui::register_event(listener, "start_game",
 			[](const std::string& param, Rml::Event& event) {
-				recomp::start_game(supported_games[0].game_id);
+				recomp::start_game(supported_games[0].game_id, {});
 				recompui::set_current_menu(recompui::Menu::None);
 			}
 		);

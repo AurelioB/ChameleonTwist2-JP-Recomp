@@ -8,7 +8,7 @@
 #include <fstream>
 #include <iomanip>
 #if defined(__ANDROID__)
-#include "SDL2/SDL_filesystem.h"
+#include "SDL2/SDL_system.h"
 #endif
 
 #if defined(_WIN32)

@@ -165,13 +165,9 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 #if defined(_WIN32)
     return ultramodern::renderer::WindowHandle{ wmInfo.info.win.window, GetCurrentThreadId() };
 #elif defined(__ANDROID__)
-    return ultramodern::renderer::WindowHandle{ window };
+    return window;
 #elif defined(__linux__)
-    if (wmInfo.subsystem != SDL_SYSWM_X11) {
-        exit_error("Unsupported SDL2 video driver \"%s\". Only X11 is supported on Linux.\n", SDL_GetCurrentVideoDriver());
-    }
-
-    return ultramodern::renderer::WindowHandle{ wmInfo.info.x11.display, wmInfo.info.x11.window };
+    return window;
 #else
     static_assert(false && "Unimplemented");
 #endif
@@ -680,7 +676,7 @@ int main(int argc, char** argv) {
     recomp::mods::scan_mods();
 
     printf("Found mods:\n");
-    for (const auto& mod : recomp::mods::get_mod_details("mm")) {
+    for (const auto& mod : recomp::mods::get_all_mod_details("ChameleonTwist2JP")) {
         printf("  %s(%s)\n", mod.mod_id.c_str(), mod.version.to_string().c_str());
         if (!mod.authors.empty()) {
             printf("    Authors: %s", mod.authors[0].c_str());
